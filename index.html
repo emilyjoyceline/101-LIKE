@@ -17,7 +17,7 @@
       padding: 40px 20px;
       line-height: 1.8;
       color: var(--text-color);
-      background: linear-gradient(90deg,#01020b,#f7f7f9,#0f2aee, #e629ba);
+      background: linear-gradient(90deg, #170103, #f113a7, #2318e7f1);
       display: flex;
       flex-direction: column;
       align-items: center;
@@ -29,7 +29,6 @@
       --text-color: #eee;
       --card-bg: #333;
       background: linear-gradient(135deg, #2b2b38, #4a1d3c);
-      cursor: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32"><circle cx="8" cy="8" r="6" fill="white"/></svg>') 8 8, auto;
     }
 
     h1 {
@@ -103,7 +102,6 @@
       font-size: 1.1em;
       position: relative;
       transition: all 0.3s ease;
-      cursor: pointer;
     }
 
     li:hover {
@@ -139,20 +137,9 @@
       border: 1px solid #ccc;
     }
 
-    @media (max-width: 768px) {
-      form {
-        flex-direction: column;
-      }
-
-      .top-bar {
-        flex-direction: column;
-        align-items: stretch;
-      }
-
-      input[type="text"],
-      button {
-        width: 100%;
-      }
+    .edit-btn, .delete-btn {
+      margin-left: 12px;
+      cursor: pointer;
     }
   </style>
 </head>
@@ -180,7 +167,24 @@
 
   <div id="toast"></div>
 
-  <script>
+  <!-- Firebase & App Script -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.9.0/firebase-app.js";
+    import { getFirestore, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/11.9.0/firebase-firestore.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyCYdDG0RcDxrg0Leagfj0lHoi8f2DdplU8",
+      authDomain: "things-i-enjoy.firebaseapp.com",
+      projectId: "things-i-enjoy",
+      storageBucket: "things-i-enjoy.appspot.com",
+      messagingSenderId: "87771462383",
+      appId: "1:87771462383:web:32331413e817ad5d51791a"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+    const likesRef = doc(db, "data", "likes");
+
     const form = document.getElementById('likeForm');
     const input = document.getElementById('likeInput');
     const list = document.getElementById('likeList');
@@ -190,63 +194,77 @@
     const importCSV = document.getElementById('importCSV');
 
     const MAX_ITEMS = 101;
-    let likes = JSON.parse(localStorage.getItem('likes')) || [
-      "Saya suka harumnya bunga-bunga",
-      "Saya suka membaca quotes-quotes menarik",
-      "Saya suka ketika dapat menyelesaikan lego"
-    ];
+    let likes = [];
+
+    async function loadLikes() {
+      const docSnap = await getDoc(likesRef);
+      if (docSnap.exists()) {
+        likes = docSnap.data().items || [];
+      } else {
+        likes = [];
+      }
+      renderList();
+    }
 
     function renderList(filter = '') {
       list.innerHTML = '';
-      const filtered = likes.filter(item => item.toLowerCase().includes(filter.toLowerCase()));
-      filtered.forEach((item, index) => {
+      const filteredLikes = likes.filter(item => item.toLowerCase().includes(filter.toLowerCase()));
+      filteredLikes.forEach((item, index) => {
         const li = document.createElement('li');
         li.textContent = item;
-        li.addEventListener('contextmenu', e => {
-          e.preventDefault();
-          const action = confirm("Edit item?\nPilih Cancel untuk menghapus.");
-          if (action) {
-            const newItem = prompt("Edit:", item);
-            if (newItem && newItem.trim()) {
-              likes[index] = newItem.trim();
-              saveAndRender();
-              showToast("Item diperbarui!");
-            }
-          } else {
-            if (confirm("Yakin ingin menghapus item ini?")) {
-              likes.splice(index, 1);
-              saveAndRender();
-              showToast("Item dihapus!");
-            }
+
+        const editBtn = document.createElement('span');
+        editBtn.textContent = '✏️';
+        editBtn.className = 'edit-btn';
+        editBtn.title = 'Edit item';
+        editBtn.onclick = async () => {
+          const newValue = prompt("Edit item:", item);
+          if (newValue && newValue.trim() && !likes.includes(newValue.trim())) {
+            likes[index] = newValue.trim();
+            await saveAndRender();
+            showToast("Item diperbarui!");
           }
-        });
+        };
+
+        const deleteBtn = document.createElement('span');
+        deleteBtn.textContent = '❌';
+        deleteBtn.className = 'delete-btn';
+        deleteBtn.title = 'Hapus item';
+        deleteBtn.onclick = async () => {
+          if (confirm("Yakin ingin menghapus item ini?")) {
+            likes.splice(index, 1);
+            await saveAndRender();
+            showToast("Item dihapus!");
+          }
+        };
+
+        li.appendChild(editBtn);
+        li.appendChild(deleteBtn);
         list.appendChild(li);
       });
+
       counter.textContent = `${likes.length} of ${MAX_ITEMS} items`;
     }
 
-    function saveAndRender() {
-      localStorage.setItem('likes', JSON.stringify(likes));
-      renderList(searchInput.value);
-    }
-
-    function showToast(msg) {
-      toast.textContent = msg;
+    function showToast(message) {
+      toast.textContent = message;
       toast.style.opacity = '1';
       setTimeout(() => toast.style.opacity = '0', 2000);
     }
 
-    form.onsubmit = e => {
+    async function saveAndRender() {
+      await setDoc(likesRef, { items: likes });
+      renderList(searchInput.value);
+    }
+
+    form.onsubmit = async e => {
       e.preventDefault();
       const newItem = input.value.trim();
-      if (!newItem || likes.map(i => i.toLowerCase()).includes(newItem.toLowerCase())) {
-        showToast("Item kosong atau sudah ada!");
-        return;
-      }
+      if (!newItem || likes.includes(newItem)) return;
       if (likes.length >= MAX_ITEMS) return showToast("Maksimal 101 item!");
       likes.unshift(newItem);
       input.value = '';
-      saveAndRender();
+      await saveAndRender();
       showToast("Item ditambahkan!");
     };
 
@@ -266,21 +284,21 @@
       a.click();
     }
 
-    importCSV.addEventListener('change', e => {
+    importCSV.addEventListener('change', async e => {
       const file = e.target.files[0];
       if (!file) return;
       const reader = new FileReader();
-      reader.onload = event => {
+      reader.onload = async event => {
         const text = event.target.result;
         const rows = text.split("\n").map(row => row.replace(/^"|"$/g, "").replace(/""/g, '"').trim()).filter(Boolean);
         likes = rows.slice(0, MAX_ITEMS);
-        saveAndRender();
+        await saveAndRender();
         showToast("Data CSV berhasil dimuat!");
       };
       reader.readAsText(file);
     });
 
-    renderList();
+    loadLikes();
   </script>
 </body>
 </html>
